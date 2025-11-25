@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    environment {
+        VENV = "${WORKSPACE}/venv"
+        PYTHON = "${WORKSPACE}/venv/bin/python3"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/rdhanore1/jenkins-backend.git'
+            }
+        }
+
+        stage('Setup Python Environment') {
+            steps {
+                sh """
+                    if [ ! -d "${VENV}" ]; then
+                        python3 -m venv "${VENV}"
+                    fi
+
+                    . "${VENV}/bin/activate"
+
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                """
+            }
+        }
+
+        stage('Run Backend') {
+            steps {
+                sh """
+                    . "${VENV}/bin/activate"
+
+                    # Kill previously running backend
+                    pkill -f app.py || true
+
+                    # Run backend in background
+                    nohup "${PYTHON}" app.py > backend.log 2>&1 &
+                """
+            }
+        }
+
+        stage('Store Public IP for Frontend') {
+            steps {
+                sh """
+                    PUBLIC_IP=\$(curl -s http://checkip.amazonaws.com)
+                    echo "http://\${PUBLIC_IP}:3000" > /var/tmp/backend_ip.txt
+                    echo "Saved backend URL: http://\${PUBLIC_IP}:3000"
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Backend started successfully!"
+        }
+        failure {
+            echo "Pipeline failed — check logs."
+        }
+    }
+}
